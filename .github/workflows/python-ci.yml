@@ -22,7 +22,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: wheels
-        path: dist
+        path: mzcore-py/dist
 
   windows:
     runs-on: windows-latest
@@ -37,7 +37,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: wheels
-        path: dist
+        path: mzcore-py/dist
 
   macos:
     runs-on: macos-latest
@@ -47,12 +47,12 @@ jobs:
       with:
         command: build
         working-directory: mzcore-py
-        args: -o dist --strip --find-interpreter
+        args: -o dist --strip --find-interpreter --target universal2-apple-darwin
     - name: Upload wheels
       uses: actions/upload-artifact@v3
       with:
         name: wheels
-        path: dist
+        path: mzcore-py/dist
 
   # release:
   #   name: Release
