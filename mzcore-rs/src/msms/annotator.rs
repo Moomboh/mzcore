@@ -1,11 +1,11 @@
-
 //use anyhow::*;
 //use itertools::Itertools;
 
+use crate::ms::utils::MassTolWindow;
 //use crate::ms::spectrum::SpectrumData;
 use crate::msms::fragmentation::*;
-use crate::msms::model::*;
 use crate::msms::model::FragmentIonSeries;
+use crate::msms::model::*;
 
 // --- Creation of "struct" that contains the required info about the exp. and theo. data for their --- //
 // comparison and specifications of each candidates. --- //
@@ -18,12 +18,15 @@ pub struct MatchedPeak {
     pub mz_error: f32,
     pub charge: i8,
     pub ion_type: FragmentIonSeries,
-    pub frag_index: u16,  // index of m/z value in the fragmentation table (starts at 0)
+    pub frag_index: u16, // index of m/z value in the fragmentation table (starts at 0)
     pub aa_position: u16, // AA position in amino acid sequence (starts at 1)
 }
 
-pub fn annotate_spectrum(spectrum_peaks: &[[f64;2]], frag_table: &FragmentationTable, mz_error_tol: f64) -> Vec<MatchedPeak> {
-
+pub fn annotate_spectrum(
+    spectrum_peaks: &[[f64; 2]],
+    frag_table: &FragmentationTable,
+    mz_error_tol: MassTolWindow,
+) -> Vec<MatchedPeak> {
     let frag_table_n_cols = frag_table.len();
     let frag_table_n_rows = frag_table.first().unwrap().mz_values.len();
 
@@ -38,11 +41,7 @@ pub fn annotate_spectrum(spectrum_peaks: &[[f64;2]], frag_table: &FragmentationT
             //let rect = Rectangle::from_corners([mz_value - mz_error_tol, 0.0], [mz_value + mz_error_tol, 0.0]);
             //all_theo_rects.push(CustomTheoIon::new(rect, (frag_table_col_idx, frag_table_row_idx) ) );
 
-            all_theo_frags.push((
-                mz_value,
-                frag_table_col_idx,
-                frag_table_row_idx
-            ));
+            all_theo_frags.push((mz_value, frag_table_col_idx, frag_table_row_idx));
 
             frag_table_row_idx += 1
         }
@@ -50,9 +49,7 @@ pub fn annotate_spectrum(spectrum_peaks: &[[f64;2]], frag_table: &FragmentationT
         frag_table_col_idx += 1
     }
 
-    all_theo_frags.sort_by(|tuple_a, tuple_b| {
-        tuple_a.0.partial_cmp(&tuple_b.0).unwrap()
-    });
+    all_theo_frags.sort_by(|tuple_a, tuple_b| tuple_a.0.partial_cmp(&tuple_b.0).unwrap());
 
     let mut grouped_theo_frags = Vec::with_capacity(all_theo_frags.len());
     let mut theo_frags_group_buffer = Vec::new();
@@ -61,7 +58,7 @@ pub fn annotate_spectrum(spectrum_peaks: &[[f64;2]], frag_table: &FragmentationT
     for theo_frag in all_theo_frags.iter() {
         let (frag_mz, _, _) = *theo_frag;
 
-        if !theo_frags_group_buffer.is_empty() && frag_mz - prev_frag_mz > mz_error_tol {
+        if !theo_frags_group_buffer.is_empty() && !mz_error_tol.contains(frag_mz, prev_frag_mz) {
             grouped_theo_frags.push(theo_frags_group_buffer.clone());
             theo_frags_group_buffer.clear();
         }
@@ -82,16 +79,12 @@ pub fn annotate_spectrum(spectrum_peaks: &[[f64;2]], frag_table: &FragmentationT
     let n_peaks = spectrum_peaks.len();
     let mut peak_idx = 0;
     while cur_frag_group_opt.is_some() && peak_idx < n_peaks {
-
         let peak = spectrum_peaks[peak_idx];
         let peak_mz = peak[0];
-        let min_exp_mz = peak_mz - mz_error_tol;
-        //println!("peak_mz={}",peak_mz);
-        //println!("min_exp_mz={}",peak_mz);
+        let min_exp_mz = mz_error_tol.bounds(peak_mz).0;
 
         let mut cur_frag_group = cur_frag_group_opt.unwrap();
         let mut last_theo_mz = cur_frag_group.last().unwrap().0;
-        //println!("last_theo_mz={}",last_theo_mz);
 
         // Check if we need to take the next theoretical fragment
         if last_theo_mz < min_exp_mz {
@@ -114,12 +107,13 @@ pub fn annotate_spectrum(spectrum_peaks: &[[f64;2]], frag_table: &FragmentationT
 
             let mz_error = peak_mz - theo_mz;
 
-            if mz_error.abs() <= mz_error_tol {
+            if mz_error_tol.contains(peak_mz, theo_mz) {
                 //println!("matching fragment with m/z={}", peak_mz);
 
-                let frag_table_col: &TheoreticalFragmentIons = frag_table.get(frag_table_col_idx).unwrap();
+                let frag_table_col: &TheoreticalFragmentIons =
+                    frag_table.get(frag_table_col_idx).unwrap();
                 let aa_position = if is_ion_forward(frag_table_col.ion_type).unwrap() {
-                    (1 + frag_table_row_idx ) as u16
+                    (1 + frag_table_row_idx) as u16
                 } else {
                     (1 + frag_table_n_rows - frag_table_row_idx) as u16
                 };
